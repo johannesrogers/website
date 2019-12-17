@@ -1,0 +1,62 @@
+%%##title=Anonimizing Middlebox
+<p>An essential system for securing your network is an anonimizing middlebox. This service can also host hidden services. The result is isolation of your client/server from the machine (virtual or otherwise) from Tor. As such if you are hosting a webserver and it gets compromised, that system is not the one with your IP address. Also if a malicious javascript occurs it cannot just ask the system nicely for the IP and such.
+<p>There are tricky ways of obscuring ones IP address such as Tails. I consider this to be a folly compared to what virtualization or even a device like a Rasperry Pi doing Tor seperately can protect.
+<p>The Tor project have <a href="https://trac.torproject.org/projects/tor/wiki/doc/TransparentProxy">some directions</a> on doing an anonymizing middlebox. Yet you might also desire a firewall, so I integrate into this guide the <a href="https://wiki.archlinux.org/index.php/Simple_stateful_firewall">Arch Stateful Firewall</a>.
+<p>This guide is focused on using iptables which these days inside the Linux kernel is a wrapper for netfilter. If you use firewalld disable it, and remember to save/load your iptables configuration as per your distribution.
+<p>You must install Tor, and on CentOS/RHEL/Fedora you must disable firewalld and install an iptables service file in systemd.
+<p>The first step requires a system with two interfaces, with one connected only to your Torified network that is protected. The other is connected to the internet.
+<h2>Step 1: Middlebox</h2>
+<p>Now we configure Tor on the middlebox. 
+<p>Your Tor configuration does not need to be complicated. As such, remove your distributions default torrc and use this one:
+<pre>
+VirtualAddrNetworkIPv4 10.192.0.0/10
+AutomapHostsOnResolve 1
+TransPort 192.168.1.1:9040
+DNSPort 192.168.1.1:5353
+
+HiddenServiceDir /var/lib/tor/hidden_ssh
+HiddenServiceVersion 3
+HiddenServicePort 22 192.168.1.2:22
+</pre>
+<p>Put it in <b>/etc/tor/torrc</b> 
+<p>The address <b>192.168.1.1</b> should be replaced with your internal networks addresses. Your protected Torified system is <b>192.168.1.2</b> in this case.
+<p>The next step is the firewall, first allow traffic and flush iptables...
+<pre>
+# iptables -P OUTPUT ACCEPT
+# iptables -P INPUT ACCEPT
+# iptables -P FORWARD ACCEPT
+# iptables -F
+# iptables -t nat -F
+</pre>
+<p>You will need to replace eth1 with the interface for your protected network.
+<pre>
+# iptables -t nat -A PREROUTING -i eth1 -p udp --dport 53 -j REDIRECT --to-ports 5353
+# iptables -t nat -A PREROUTING -i eth1 -p udp --dport 5353 -j REDIRECT --to-ports 5353
+# iptables -t nat -A PREROUTING -i eth1 -p tcp --syn -j REDIRECT --to-ports $_trans_port
+</pre>
+<p>Now you make your stateful firewall...</p>
+<pre>
+# iptables -P FORWARD DROP
+# iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+# iptables -A INPUT -m conntrack --ctstate INVALID -j DROP
+# iptables -A TCP -p tcp --dport 22 -j ACCEPT
+# iptables -A INPUT -i lo -j ACCEPT
+# iptables -P INPUT DROP
+# iptables -A INPUT -p udp -m conntrack --ctstate NEW -j UDP
+# iptables -A INPUT -p tcp --syn -m conntrack --ctstate NEW -j TCP
+# iptables -A INPUT -p udp -j REJECT --reject-with icmp-port-unreachable
+# iptables -A INPUT -p tcp -j REJECT --reject-with tcp-reset
+# iptables -A INPUT -j REJECT --reject-with icmp-proto-unreachable
+# iptables -A TCP -p tcp -s 192.168.1.0/24 -j ACCEPT
+# iptables -A UDP -p tcp -s 192.168.1.0/24 -j ACCEPT
+# iptables -A FORWARD -p tcp -s 192.168.1.0/24 -j ACCEPT
+</pre>
+<p>The Arch Linux Wiki link above explains the iptables config, but I put them in a different order so you don't lose your connection if using SSH. I also open SSH on your middlebox to incoming connections.
+<p>One can go further and follow Arch directions to tighten up things further to stop spoofing and SYN scans.
+<h2>Part 2: The Client</h2>
+<p>This is the easy bit, you just configure a static network. Depending on your distribution this may differ - however the concept is the same.
+<p><b>IP address: 192.168.1.2</b><br>
+<b>Netmask: 255.255.255.0</b><br>
+<b>Gateway: 192.168.1.1</b><br>
+<b>DNS server: 192.168.1.1</b>
+<p>That is basically it.

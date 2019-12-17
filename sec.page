@@ -1,0 +1,7 @@
+%%##title=Guides on Security
+<center>
+<img src="/secs.png" alt="Practice Safe SECS: OPSEC, COMSEC, INFOSEC, PERSEC">
+</center>
+<p>I will try to write many informative and useful guides on security. From communicating with someone securely, to autheticating with one properly, and establishing secure networks. These guides are for users of modern UNIX systems like Gentoo and Fedora. Much will be applicable to other systems.
+%%##subpg=sec
+<p>That is all I offer!
